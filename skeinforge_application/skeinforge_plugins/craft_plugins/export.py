@@ -79,6 +79,7 @@ import cStringIO
 import os
 import sys
 import time
+import string
 
 
 __author__ = 'Enrique Perez (perez_enrique@yahoo.com)'
@@ -158,6 +159,12 @@ def writeOutput(fileName, shouldAnalyze=True):
 	fileNameSuffix = fileName[: fileName.rfind('.')]
 	if repository.addExportSuffix.value:
 		fileNameSuffix += '_export'
+		
+	if (repository.profileFileExtension.value == True):
+		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
+		if profileName:
+			fileNameSuffix += '.' + string.replace(profileName, ' ', '_')
+		
 	fileNameSuffix += '.' + repository.fileExtension.value
 	gcodeText = gcodec.getGcodeFileText(fileName, '')
 	procedures = skeinforge_craft.getProcedures('export', gcodeText)
@@ -228,6 +235,7 @@ class ExportRepository:
 				exportPlugin.directoryPath = exportStaticDirectoryPath
 			self.exportPlugins.append(exportPlugin)
 		self.fileExtension = settings.StringSetting().getFromValue('File Extension:', self, 'gcode')
+		self.profileFileExtension = settings.BooleanSetting().getFromValue('Add Profile To File Extension:', self, False)
 		self.nameOfReplaceFile = settings.StringSetting().getFromValue('Name of Replace File:', self, 'replace.csv')
 		self.savePenultimateGcode = settings.BooleanSetting().getFromValue('Save Penultimate Gcode', self, False)
 		self.executeTitle = 'Export'

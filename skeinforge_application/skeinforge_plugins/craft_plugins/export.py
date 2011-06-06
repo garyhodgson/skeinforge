@@ -80,6 +80,7 @@ import os
 import sys
 import time
 import string
+import zipfile
 
 
 __author__ = 'Enrique Perez (perez_enrique@yahoo.com)'
@@ -159,12 +160,12 @@ def writeOutput(fileName, shouldAnalyze=True):
 	fileNameSuffix = fileName[: fileName.rfind('.')]
 	if repository.addExportSuffix.value:
 		fileNameSuffix += '_export'
-		
+	
 	if (repository.profileFileExtension.value == True):
 		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
 		if profileName:
 			fileNameSuffix += '.' + string.replace(profileName, ' ', '_')
-		
+	
 	fileNameSuffix += '.' + repository.fileExtension.value
 	gcodeText = gcodec.getGcodeFileText(fileName, '')
 	procedures = skeinforge_craft.getProcedures('export', gcodeText)
@@ -197,8 +198,29 @@ def writeOutput(fileName, shouldAnalyze=True):
 			replaceableExportGcode = selectedPluginModule.getOutput(exportGcode)
 		sendOutputTo(replaceableExportGcode, repository.alsoSendOutputTo.value)
 	print('It took %s to export the file.' % euclidean.getDurationString(time.time() - startTime))
+	
+	if (repository.archiveProfile.value == True):
+		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
+		if profileName:
+			profileZipFileName = fileName[: fileName.rfind('.')] + '.profile.' + string.replace(profileName, ' ', '_') + '.zip'
+			zipper(archive.getProfilesPath(skeinforge_profile.getProfileDirectory()), profileName+'/', profileZipFileName)
+			print('Profile archived to ' + profileZipFileName)
+		
 	return window
 
+def zipper(dir, folderName, zip_file):
+    'Taken from http://coreygoldberg.blogspot.com/2009/07/python-zip-directories-recursively.html'
+    zip = zipfile.ZipFile(zip_file, 'w', compression=zipfile.ZIP_DEFLATED)
+    root_len = len(os.path.abspath(dir))
+    for root, dirs, files in os.walk(dir):
+        archive_root = os.path.abspath(root)[root_len:]
+        for f in files:
+            fullpath = os.path.join(root, f)
+            archive_name = os.path.join(archive_root, f)
+            print f
+            zip.write(fullpath, folderName+archive_name, zipfile.ZIP_DEFLATED)
+    zip.close()
+    return zip_file
 
 class ExportRepository:
 	'A class to handle the export settings.'
@@ -235,11 +257,12 @@ class ExportRepository:
 				exportPlugin.directoryPath = exportStaticDirectoryPath
 			self.exportPlugins.append(exportPlugin)
 		self.fileExtension = settings.StringSetting().getFromValue('File Extension:', self, 'gcode')
-		self.profileFileExtension = settings.BooleanSetting().getFromValue('Add Profile To File Extension:', self, False)
+		self.profileFileExtension = settings.BooleanSetting().getFromValue('Add Profile To File Extension', self, False)
+		self.archiveProfile = settings.BooleanSetting().getFromValue('Archive Profile Used', self, False)
 		self.nameOfReplaceFile = settings.StringSetting().getFromValue('Name of Replace File:', self, 'replace.csv')
 		self.savePenultimateGcode = settings.BooleanSetting().getFromValue('Save Penultimate Gcode', self, False)
 		self.executeTitle = 'Export'
-
+	
 	def execute(self):
 		'Export button has been clicked.'
 		fileNames = skeinforge_polyfile.getFileOrDirectoryTypesUnmodifiedGcode(self.fileNameInput.value, fabmetheus_interpret.getImportPluginFileNames(), self.fileNameInput.wasCancelled)
@@ -253,12 +276,12 @@ class ExportSkein:
 		self.crafting = False
 		self.decimalPlacesExported = 2
 		self.output = cStringIO.StringIO()
-
+	
 	def addLine(self, line):
 		'Add a line of text and a newline to the output.'
 		if line != '':
 			self.output.write(line + '\n')
-
+	
 	def getCraftedGcode( self, repository, gcodeText ):
 		'Parse gcode text and store the export gcode.'
 		self.repository = repository
@@ -266,7 +289,7 @@ class ExportSkein:
 		for line in lines:
 			self.parseLine(line)
 		return self.output.getvalue()
-
+	
 	def getLineWithTruncatedNumber(self, character, line, splitLine):
 		'Get a line with the number after the character truncated.'
 		numberString = gcodec.getStringFromCharacterSplitLine(character, splitLine)
@@ -274,7 +297,7 @@ class ExportSkein:
 			return line
 		roundedNumberString = euclidean.getRoundedToPlacesString(self.decimalPlacesExported, float(numberString))
 		return gcodec.getLineWithValueString(character, line, splitLine, roundedNumberString)
-
+	
 	def parseLine(self, line):
 		'Parse a gcode line.'
 		splitLine = gcodec.getSplitLineBeforeBracketSemicolon(line)

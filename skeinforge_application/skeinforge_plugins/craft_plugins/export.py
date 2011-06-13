@@ -75,13 +75,14 @@ from skeinforge_application.skeinforge_utilities import skeinforge_analyze
 from skeinforge_application.skeinforge_utilities import skeinforge_craft
 from skeinforge_application.skeinforge_utilities import skeinforge_polyfile
 from skeinforge_application.skeinforge_utilities import skeinforge_profile
+from skeinforge_application.skeinforge_utilities import skeinforge_meta
+from time import strftime
 import cStringIO
 import os
 import sys
 import time
 import string
 import zipfile
-
 
 __author__ = 'Enrique Perez (perez_enrique@yahoo.com)'
 __date__ = '$Date: 2008/21/04 $'
@@ -151,6 +152,7 @@ def sendOutputTo(text, toValue):
 
 def writeOutput(fileName, shouldAnalyze=True):
 	'Export a gcode linear move file.'
+	
 	if fileName == '':
 		return None
 	repository = ExportRepository()
@@ -170,15 +172,19 @@ def writeOutput(fileName, shouldAnalyze=True):
 	if (repository.descriptiveExtension.value == True):
 		fileNameSuffix += descriptiveExtension()
 
-	print(fileNameSuffix)
+	if (repository.timestampExtension.value == True):
+		fileNameSuffix += '.'+strftime("%Y%m%d_%H%M%S")
 
 	if (repository.archiveProfile.value == True):
 		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
 		if profileName:
 			profileZipFileName = fileNameSuffix + '.zip'
-			print(profileZipFileName)
 			zipper(archive.getProfilesPath(skeinforge_profile.getProfileDirectory()), profileName+'/', profileZipFileName)
 			print('Profile archived to ' + profileZipFileName)
+
+	if (repository.exportProfileAsCsv.value == True):
+		csvExportFilename = fileNameSuffix + '.csv'
+		archive.writeFileText(csvExportFilename, Condenser().readSettings())
 
 	fileNameSuffix += '.' + repository.fileExtension.value
 	gcodeText = gcodec.getGcodeFileText(fileName, '')
@@ -326,7 +332,9 @@ class ExportRepository:
 		self.fileExtension = settings.StringSetting().getFromValue('File Extension:', self, 'gcode')
 		self.profileFileExtension = settings.BooleanSetting().getFromValue('Add Profile To File Extension', self, False)
 		self.archiveProfile = settings.BooleanSetting().getFromValue('Archive Used Profile As Zip', self, False)
+		self.exportProfileAsCsv = settings.BooleanSetting().getFromValue('Export Profile Values As CSV File', self, False)
 		self.descriptiveExtension = settings.BooleanSetting().getFromValue('Add Descriptive Extension', self, False)
+		self.timestampExtension = settings.BooleanSetting().getFromValue('Add Timestamp Extension', self, False)
 		self.nameOfReplaceFile = settings.StringSetting().getFromValue('Name of Replace File:', self, 'replace.csv')
 		self.savePenultimateGcode = settings.BooleanSetting().getFromValue('Save Penultimate Gcode', self, False)
 		self.executeTitle = 'Export'
@@ -394,6 +402,36 @@ class ExportSkein:
 		line = self.getLineWithTruncatedNumber('R', line, splitLine)
 		self.addLine(line)
 
+class Condenser:
+        def readSettings(self):
+                self.output = cStringIO.StringIO()                
+                profileDirectory = skeinforge_profile.getProfileDirectory()
+                craftRepo = skeinforge_craft.CraftRepository()
+                profileBaseName = settings.getProfileBaseName( craftRepo )
+                allCraftNames = archive.getPluginFileNamesFromDirectoryPath( skeinforge_craft.getPluginsDirectoryPath() )
+
+                fullProfilePath = os.path.join( archive.getSettingsPath() , 'profiles' )
+                fullProfileDirectory = os.path.join( fullProfilePath , profileDirectory )
+                
+                for craftName in allCraftNames:
+                        pluginModule = archive.getModuleWithPath(os.path.join( skeinforge_craft.getPluginsDirectoryPath(), craftName  ))
+                        
+                        repo = pluginModule.getNewRepository()
+                        self.outputSettings(craftName, settings.getReadRepository(repo).preferences)
+                       
+                return self.output.getvalue()
+
+        def addLine(self, line):
+                "Add a line of text and a newline to the output."
+                self.output.write(line + '\n')
+
+        def outputSettings(self, craftName, settings):
+                for setting in settings:
+                        if hasattr(setting, 'value') and setting.name != 'WindowPosition' and not setting.name.startswith('Open File') :
+                                self.outputSetting(craftName, setting)
+
+        def outputSetting(self, craftName, setting):
+                self.addLine(craftName + ',' + setting.name + ',' + str(setting.value))
 
 def main():
 	'Display the export dialog.'

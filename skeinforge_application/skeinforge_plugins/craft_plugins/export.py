@@ -158,6 +158,7 @@ def writeOutput(fileName, shouldAnalyze=True):
 	startTime = time.time()
 	print('File ' + archive.getSummarizedFileName(fileName) + ' is being chain exported.')
 	fileNameSuffix = fileName[: fileName.rfind('.')]
+
 	if repository.addExportSuffix.value:
 		fileNameSuffix += '_export'
 	
@@ -165,7 +166,20 @@ def writeOutput(fileName, shouldAnalyze=True):
 		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
 		if profileName:
 			fileNameSuffix += '.' + string.replace(profileName, ' ', '_')
-	
+
+	if (repository.descriptiveExtension.value == True):
+		fileNameSuffix += descriptiveExtension()
+
+	print(fileNameSuffix)
+
+	if (repository.archiveProfile.value == True):
+		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
+		if profileName:
+			profileZipFileName = fileNameSuffix + '.zip'
+			print(profileZipFileName)
+			zipper(archive.getProfilesPath(skeinforge_profile.getProfileDirectory()), profileName+'/', profileZipFileName)
+			print('Profile archived to ' + profileZipFileName)
+
 	fileNameSuffix += '.' + repository.fileExtension.value
 	gcodeText = gcodec.getGcodeFileText(fileName, '')
 	procedures = skeinforge_craft.getProcedures('export', gcodeText)
@@ -198,16 +212,70 @@ def writeOutput(fileName, shouldAnalyze=True):
 			replaceableExportGcode = selectedPluginModule.getOutput(exportGcode)
 		sendOutputTo(replaceableExportGcode, repository.alsoSendOutputTo.value)
 	print('It took %s to export the file.' % euclidean.getDurationString(time.time() - startTime))
-	
-	if (repository.archiveProfile.value == True):
-		profileName = skeinforge_profile.getProfileName(skeinforge_profile.getCraftTypeName())
-		if profileName:
-			profileZipFileName = fileName[: fileName.rfind('.')] + '.profile.' + string.replace(profileName, ' ', '_') + '.zip'
-			zipper(archive.getProfilesPath(skeinforge_profile.getProfileDirectory()), profileName+'/', profileZipFileName)
-			print('Profile archived to ' + profileZipFileName)
-		
+
 	return window
 
+def descriptiveExtension():
+        descriptionExtension = '.'+carveDescription()+speedDescription()+fillDescription()+multiplyDescription()
+        return descriptionExtension
+
+def carveDescription():
+        descriptionExtension = ''
+        pluginModule = archive.getModuleWithPath(os.path.join( skeinforge_craft.getPluginsDirectoryPath(), 'carve'  ))
+        prefs = settings.getReadRepository(pluginModule.getNewRepository()).preferences
+        for pref in prefs:
+                if (pref.name == 'Layer Thickness (mm):'):
+                        lt = pref.value
+                        descriptionExtension += str(pref.value).replace('.','')+'h'
+                if (pref.name == 'Perimeter Width over Thickness (ratio):'):
+                        pwot = pref.value
+                        descriptionExtension += 'x' + str(lt * pwot).replace('.','') + 'w'
+        return descriptionExtension
+
+def speedDescription():
+        descriptionExtension = '_'
+        pluginModule = archive.getModuleWithPath(os.path.join( skeinforge_craft.getPluginsDirectoryPath(), 'speed'  ))
+        prefs = settings.getReadRepository(pluginModule.getNewRepository()).preferences
+        for pref in prefs:
+                if (pref.name == 'Activate Speed:' and pref.value == False):
+                        return ''
+                if (pref.name == 'Feed Rate (mm/s):'):
+                        feedrate = pref.value
+                if (pref.name == 'Flow Rate Setting (float):'):
+                        flowrate = pref.value
+        if (feedrate == flowrate):
+                descriptionExtension += str(feedrate).replace('.0','')+'Ff'
+        else :
+                descriptionExtension += str(feedrate).replace('.0','')+'F'+str(flowrate).replace('.0','')+'f'
+        return descriptionExtension
+
+def fillDescription():
+        descriptionExtension = '_'
+        pluginModule = archive.getModuleWithPath(os.path.join( skeinforge_craft.getPluginsDirectoryPath(), 'fill'  ))
+        prefs = settings.getReadRepository(pluginModule.getNewRepository()).preferences
+        for pref in prefs:
+                if (pref.name == 'Activate Fill:' and pref.value == False):
+                        return ''
+                if (pref.name == 'Infill Solidity (ratio):'):
+                        infill = pref.value
+                        descriptionExtension += str(pref.value).replace('.','')+'fill'
+        return descriptionExtension
+
+def multiplyDescription():
+        descriptionExtension = ''
+        pluginModule = archive.getModuleWithPath(os.path.join( skeinforge_craft.getPluginsDirectoryPath(), 'multiply'  ))
+        prefs = settings.getReadRepository(pluginModule.getNewRepository()).preferences
+        for pref in prefs:
+                if (pref.name == 'Activate Multiply:' and pref.value == False):
+                        return ''
+                if (pref.name == 'Number of Columns (integer):'):
+                        cols = pref.value
+                if (pref.name == 'Number of Rows (integer):'):
+                        rows = pref.value
+        if (cols > 1 or rows > 1) :
+                descriptionExtension ='_'+str(cols * rows).replace('.','')+'off'
+        return descriptionExtension
+                        
 def zipper(dir, folderName, zip_file):
     'Taken from http://coreygoldberg.blogspot.com/2009/07/python-zip-directories-recursively.html'
     zip = zipfile.ZipFile(zip_file, 'w', compression=zipfile.ZIP_DEFLATED)
@@ -217,7 +285,6 @@ def zipper(dir, folderName, zip_file):
         for f in files:
             fullpath = os.path.join(root, f)
             archive_name = os.path.join(archive_root, f)
-            print f
             zip.write(fullpath, folderName+archive_name, zipfile.ZIP_DEFLATED)
     zip.close()
     return zip_file
@@ -258,7 +325,8 @@ class ExportRepository:
 			self.exportPlugins.append(exportPlugin)
 		self.fileExtension = settings.StringSetting().getFromValue('File Extension:', self, 'gcode')
 		self.profileFileExtension = settings.BooleanSetting().getFromValue('Add Profile To File Extension', self, False)
-		self.archiveProfile = settings.BooleanSetting().getFromValue('Archive Profile Used', self, False)
+		self.archiveProfile = settings.BooleanSetting().getFromValue('Archive Used Profile As Zip', self, False)
+		self.descriptiveExtension = settings.BooleanSetting().getFromValue('Add Descriptive Extension', self, False)
 		self.nameOfReplaceFile = settings.StringSetting().getFromValue('Name of Replace File:', self, 'replace.csv')
 		self.savePenultimateGcode = settings.BooleanSetting().getFromValue('Save Penultimate Gcode', self, False)
 		self.executeTitle = 'Export'
